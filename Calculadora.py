@@ -1,37 +1,30 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
+from st_copy_to_clipboard import st_copy_to_clipboard # Nueva librería
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(layout="wide", page_title="Calculadora Color Insumos")
 
-# --- ESTILOS Y TRUCO PARA COPIAR (JavaScript) ---
+# --- ESTILOS PERSONALIZADOS ---
 st.markdown("""
-    <script>
-    function copyToClipboard() {
-        var copyText = document.getElementById("mensaje_final");
-        copyText.select();
-        copyText.setSelectionRange(0, 99999); /* Para móviles */
-        document.execCommand("copy");
-        alert("¡Mensaje copiado al portapapeles! ✅");
-    }
-    </script>
     <style>
     .main { background-color: #f5f7f9; }
     .stTextArea textarea { font-family: monospace; color: #1e1e1e; font-size: 14px; }
-    div.stButton > button:first-child {
-        background-color: #25D366;
-        color: white;
-        width: 100%;
-        border-radius: 10px;
-        height: 3em;
-        font-weight: bold;
+    /* Estilo para que el botón de copiar resalte */
+    .st-copy-to-clipboard button {
+        background-color: #25D366 !important;
+        color: white !important;
+        border: none !important;
+        padding: 10px 20px !important;
+        border-radius: 8px !important;
+        font-weight: bold !important;
+        width: 100% !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # --- FUNCIONES DE BACKEND ---
-
 @st.cache_data(ttl=600)
 def obtener_tasa_bcv():
     url = "https://www.bcv.org.ve/"
@@ -77,11 +70,9 @@ Venezuela (0102) | 04126901346 | V-20281424
 *¿Confirmamos el pago para procesar tu pedido en Color Insumos?*"""
 
 # --- LÓGICA DE LA APP ---
-
 st.title("🎨 Calculadora de Pagos - Color Insumos")
 
 tasa_auto = obtener_tasa_bcv()
-
 col1, col2 = st.columns([1, 1], gap="medium")
 
 with col1:
@@ -107,13 +98,11 @@ with col2:
     st.subheader("📝 Mensaje Final")
     resultado = generar_mensaje(articulo, precio_usd, tasa_bcv, tasa_paralelo, abono_usd, abono_bs)
     
-    # Área de texto con un ID para que el JavaScript lo encuentre
-    st.text_area("Resultado:", value=resultado, height=400, key="resultado_area")
+    # Mostramos el texto formateado
+    st.text_area("Vista previa:", value=resultado, height=380)
     
-    # Botón que activa el copiado (usando un truco de componentes de Streamlit o un simple st.button con feedback)
-    if st.button("📋 COPIAR MENSAJE PARA WHATSAPP"):
-        # En Streamlit Cloud, lo más efectivo es usar st.code para un clic o este aviso:
-        st.write("✅ **¡Listo! Selecciona el texto de arriba y cópialo.**")
-        st.balloons() 
+    # BOTÓN DE COPIADO PROFESIONAL
+    st.markdown("### ↓ Haz clic abajo para copiar ↓")
+    st_copy_to_clipboard(resultado, before_copy_label="📋 COPIAR MENSAJE", after_copy_label="✅ ¡COPIADO!")
 
 st.caption("Color Insumos - San Francisco, Zulia.")
