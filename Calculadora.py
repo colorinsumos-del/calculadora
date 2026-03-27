@@ -11,7 +11,7 @@ st.markdown("""
     .main { background-color: #f5f7f9; }
     .stTextArea textarea { font-family: monospace; color: #1e1e1e; }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 # --- FUNCIONES DE BACKEND ---
 
