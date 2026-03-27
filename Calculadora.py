@@ -9,31 +9,26 @@ st.set_page_config(layout="wide", page_title="Calculadora de Pagos Mixtos - Colo
 # --- FUNCIONES DE BACKEND (PYTHON) ---
 
 @st.cache_data(ttl=3600)  # Caché de 1 hora para no saturar al BCV
+@st.cache_data(ttl=600) # Bajamos el caché a 10 min
 def obtener_tasa_bcv_scraping():
-    """
-    Realiza web scraping en la página principal del BCV para obtener la tasa del Dólar.
-    """
     url = "https://www.bcv.org.ve/"
+    # Headers para simular un navegador real y evitar bloqueos
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
     try:
-        response = requests.get(url, verify=False, timeout=10) # Verify=False por problemas de SSL comunes en VN
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # El BCV guarda la tasa en un div con id 'dolar' y dentro de un strong
-        tasa_bcv_element = soup.find('div', id='dolar').find('strong')
-        
-        if tasa_bcv_element:
-            tasa_texto = tasa_bcv_element.text.strip()
-            # Reemplazar coma por punto para convertir a float
-            tasa_limpia = tasa_texto.replace(',', '.')
-            return float(tasa_limpia)
-        else:
-            return 46.85  # Tasa de respaldo por si falla el scraping
-            
-    except Exception as e:
-        st.error(f"Error al obtener la tasa del BCV: {e}")
-        return 46.85  # Tasa de respaldo por si falla el scraping
+        # Ponemos un timeout corto (3 segundos) para que no se quede cargando
+        response = requests.get(url, headers=headers, verify=False, timeout=3)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            tasa_element = soup.find('div', id='dolar').find('strong')
+            if tasa_element:
+                return float(tasa_element.text.strip().replace(',', '.'))
+        return 47.15 # Tasa de respaldo si el código no es 200
+    except:
+        # Si hay error de conexión o timeout, devolvemos una tasa base 
+        # para que la app CARGUE de todas formas.
+        return 47.15
 
 def generar_mensaje_cotizacion(articulo, precio_usd, tasa_bcv, tasa_paralelo, abono_usd, abono_bs):
     """
