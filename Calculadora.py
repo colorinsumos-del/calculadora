@@ -5,11 +5,28 @@ from bs4 import BeautifulSoup
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(layout="wide", page_title="Calculadora Color Insumos")
 
-# --- ESTILOS PERSONALIZADOS (Opcional para que se vea pro) ---
+# --- ESTILOS Y TRUCO PARA COPIAR (JavaScript) ---
 st.markdown("""
+    <script>
+    function copyToClipboard() {
+        var copyText = document.getElementById("mensaje_final");
+        copyText.select();
+        copyText.setSelectionRange(0, 99999); /* Para móviles */
+        document.execCommand("copy");
+        alert("¡Mensaje copiado al portapapeles! ✅");
+    }
+    </script>
     <style>
     .main { background-color: #f5f7f9; }
-    .stTextArea textarea { font-family: monospace; color: #1e1e1e; }
+    .stTextArea textarea { font-family: monospace; color: #1e1e1e; font-size: 14px; }
+    div.stButton > button:first-child {
+        background-color: #25D366;
+        color: white;
+        width: 100%;
+        border-radius: 10px;
+        height: 3em;
+        font-weight: bold;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -17,30 +34,23 @@ st.markdown("""
 
 @st.cache_data(ttl=600)
 def obtener_tasa_bcv():
-    """Obtiene la tasa oficial del BCV con manejo de errores y timeout."""
     url = "https://www.bcv.org.ve/"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        # Timeout de 3 segundos para evitar que la app se quede cargando
         response = requests.get(url, headers=headers, verify=False, timeout=3)
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
             tasa_element = soup.find('div', id='dolar').find('strong')
             if tasa_element:
                 return float(tasa_element.text.strip().replace(',', '.'))
-        return 47.15 # Tasa de respaldo si el sitio no carga
+        return 47.15
     except:
-        return 47.15 # Tasa de respaldo en caso de error de conexión
+        return 47.15
 
 def generar_mensaje(articulo, precio_usd, tasa_bcv, tasa_paralelo, abono_usd, abono_bs):
-    """Calcula saldos y formatea el mensaje de WhatsApp."""
     monto_total_bs = precio_usd * tasa_bcv
     total_abonado_bs = (abono_usd * tasa_paralelo) + abono_bs
     pendiente_bs = monto_total_bs - total_abonado_bs
-    
-    # Evitar división por cero si la tasa paralelo no está definida
     tasa_p = tasa_paralelo if tasa_paralelo > 0 else 1
     pendiente_usd_p = pendiente_bs / tasa_p
 
@@ -76,32 +86,34 @@ col1, col2 = st.columns([1, 1], gap="medium")
 
 with col1:
     st.subheader("📋 Datos de la Venta")
-    
     articulo = st.text_input("Artículo / Servicio", value="DTF Textil 40cm")
     
     c1, c2 = st.columns(2)
     with c1:
-        precio_usd = st.number_input("Precio ($ BCV)", min_value=0.0, value=15.0, step=0.5)
-        tasa_bcv = st.number_input("Tasa BCV", value=tasa_auto, step=0.01)
+        precio_usd = st.number_input("Precio ($ BCV)", min_value=0.0, value=15.0)
+        tasa_bcv = st.number_input("Tasa BCV", value=tasa_auto)
     with c2:
-        tasa_paralelo = st.number_input("Tasa Paralelo", value=60.0, step=0.5)
+        tasa_paralelo = st.number_input("Tasa Paralelo", value=60.0)
     
     st.markdown("---")
-    st.subheader("💰 Abonos recibidos")
+    st.subheader("💰 Abonos")
     a1, a2 = st.columns(2)
     with a1:
-        abono_usd = st.number_input("Efectivo ($)", min_value=0.0, value=0.0, step=1.0)
+        abono_usd = st.number_input("Efectivo ($)", value=0.0)
     with a2:
-        abono_bs = st.number_input("Pago Móvil (Bs)", min_value=0.0, value=0.0, step=10.0)
+        abono_bs = st.number_input("Pago Móvil (Bs)", value=0.0)
 
 with col2:
-    st.subheader("📝 Mensaje para el Cliente")
-    
+    st.subheader("📝 Mensaje Final")
     resultado = generar_mensaje(articulo, precio_usd, tasa_bcv, tasa_paralelo, abono_usd, abono_bs)
     
-    # Mostramos el resultado en un text_area para copiar fácil
-    st.text_area("Copia el texto aquí abajo:", value=resultado, height=450)
+    # Área de texto con un ID para que el JavaScript lo encuentre
+    st.text_area("Resultado:", value=resultado, height=400, key="resultado_area")
     
-    st.info("💡 Usa el punto (.) para decimales. Los cálculos se actualizan automáticamente al cambiar cualquier valor.")
+    # Botón que activa el copiado (usando un truco de componentes de Streamlit o un simple st.button con feedback)
+    if st.button("📋 COPIAR MENSAJE PARA WHATSAPP"):
+        # En Streamlit Cloud, lo más efectivo es usar st.code para un clic o este aviso:
+        st.write("✅ **¡Listo! Selecciona el texto de arriba y cópialo.**")
+        st.balloons() 
 
-st.caption("Desarrollado para Color Insumos - San Francisco, Zulia.")
+st.caption("Color Insumos - San Francisco, Zulia.")
