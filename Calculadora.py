@@ -1,48 +1,53 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-import re
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(layout="wide", page_title="Calculadora de Pagos Mixtos - Color Insumos")
+st.set_page_config(layout="wide", page_title="Calculadora Color Insumos")
 
-# --- FUNCIONES DE BACKEND (PYTHON) ---
+# --- ESTILOS PERSONALIZADOS (Opcional para que se vea pro) ---
+st.markdown("""
+    <style>
+    .main { background-color: #f5f7f9; }
+    .stTextArea textarea { font-family: monospace; color: #1e1e1e; }
+    </style>
+    """, unsafe_allow_stdio=True)
 
-@st.cache_data(ttl=3600)  # Caché de 1 hora para no saturar al BCV
-@st.cache_data(ttl=600) # Bajamos el caché a 10 min
-def obtener_tasa_bcv_scraping():
+# --- FUNCIONES DE BACKEND ---
+
+@st.cache_data(ttl=600)
+def obtener_tasa_bcv():
+    """Obtiene la tasa oficial del BCV con manejo de errores y timeout."""
     url = "https://www.bcv.org.ve/"
-    # Headers para simular un navegador real y evitar bloqueos
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     try:
-        # Ponemos un timeout corto (3 segundos) para que no se quede cargando
+        # Timeout de 3 segundos para evitar que la app se quede cargando
         response = requests.get(url, headers=headers, verify=False, timeout=3)
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
             tasa_element = soup.find('div', id='dolar').find('strong')
             if tasa_element:
                 return float(tasa_element.text.strip().replace(',', '.'))
-        return 47.15 # Tasa de respaldo si el código no es 200
+        return 47.15 # Tasa de respaldo si el sitio no carga
     except:
-        # Si hay error de conexión o timeout, devolvemos una tasa base 
-        # para que la app CARGUE de todas formas.
-        return 47.15
+        return 47.15 # Tasa de respaldo en caso de error de conexión
 
-def generar_mensaje_cotizacion(articulo, precio_usd, tasa_bcv, tasa_paralelo, abono_usd, abono_bs):
-    """
-    Calcula los saldos y genera la cadena de texto final para WhatsApp.
-    """
-    precio_total_bs = precio_usd * tasa_bcv
+def generar_mensaje(articulo, precio_usd, tasa_bcv, tasa_paralelo, abono_usd, abono_bs):
+    """Calcula saldos y formatea el mensaje de WhatsApp."""
+    monto_total_bs = precio_usd * tasa_bcv
     total_abonado_bs = (abono_usd * tasa_paralelo) + abono_bs
-    saldo_pendiente_bs = precio_total_bs - total_abonado_bs
-    saldo_pendiente_usd_paralelo = saldo_pendiente_bs / tasa_paralelo
+    pendiente_bs = monto_total_bs - total_abonado_bs
     
-    mensaje = f"""✨ *Resumen de Pago Mixto - {articulo}*
+    # Evitar división por cero si la tasa paralelo no está definida
+    tasa_p = tasa_paralelo if tasa_paralelo > 0 else 1
+    pendiente_usd_p = pendiente_bs / tasa_p
+
+    return f"""✨ *Resumen de Pago Mixto - {articulo}*
 ──────────────────────
 💰 **Precio Total:** ${precio_usd:.2f} (Tasa BCV: {tasa_bcv:.2f})
-💵 **Monto en Bs:** {precio_total_bs:.2f} Bs.
+💵 **Monto en Bs:** {monto_total_bs:.2f} Bs.
 ──────────────────────
 
 📥 **Tus Abonos:**
@@ -52,62 +57,51 @@ def generar_mensaje_cotizacion(articulo, precio_usd, tasa_bcv, tasa_paralelo, ab
 
 ──────────────────────
 🛑 **SALDO PENDIENTE:**
-👉 **En Bolívares:** {saldo_pendiente_bs:.2f} Bs.
-👉 **En Divisas ($ Efectivo):** ${saldo_pendiente_usd_paralelo:.2f} USD
+👉 **En Bolívares:** {pendiente_bs:.2f} Bs.
+👉 **En Divisas ($ Efectivo):** ${pendiente_usd_p:.2f} USD
 ──────────────────────
 
 🏦 **Datos Pago Móvil:**
 Venezuela (0102) | 04126901346 | V-20281424
 
 *¿Confirmamos el pago para procesar tu pedido en Color Insumos?*"""
-    return mensaje
 
-# --- FRONTEND (ESTRUCTURA VISUAL EN STREAMLIT) ---
+# --- LÓGICA DE LA APP ---
 
-st.title("🎨 Calculadora de Cotizaciones y Pagos Mixtos")
-st.markdown("---")
+st.title("🎨 Calculadora de Pagos - Color Insumos")
 
-# Obtener tasa BCV automáticamente
-tasa_bcv_real = obtener_tasa_bcv_scraping()
+tasa_auto = obtener_tasa_bcv()
 
-# Usar columnas para organizar el formulario y el resultado
-col_formulario, col_resultado = st.columns([1, 1.2], gap="large")
+col1, col2 = st.columns([1, 1], gap="medium")
 
-with col_formulario:
-    st.subheader("🛠️ Panel de Entrada (Datos de Venta)")
+with col1:
+    st.subheader("📋 Datos de la Venta")
     
-    with st.expander("📝 Datos del Artículo y Tasas", expanded=True):
-        articulo_input = st.text_input("Nombre del Artículo", default="DTF Textil 40cm")
-        precio_usd_input = st.number_input("Precio del Artículo ($ BCV)", min_value=1.0, value=15.0, step=0.1)
-        
-        # Muestra la tasa BCV obtenida automáticamente, pero permite editarla
-        tasa_bcv_input = st.number_input("Tasa BCV (Hoy, automática)", value=tasa_bcv_real, step=0.01)
-        tasa_paralelo_input = st.number_input("Tasa Dólar Paralelo (Efectivo)", value=60.00, step=0.1)
-
-    with st.expander("💸 Abonos del Cliente", expanded=True):
-        abono_usd_input = st.number_input("¿Cuánto abonó en $ efectivo?", min_value=0.0, value=0.0, step=1.0)
-        abono_bs_input = st.number_input("¿Cuánto abonó en Bs (Pago Móvil)?", min_value=0.0, value=0.0, step=10.0)
-
-with col_resultado:
-    st.subheader("📲 Vista Previa del Mensaje para el Cliente")
+    articulo = st.text_input("Artículo / Servicio", value="DTF Textil 40cm")
     
-    # Generar el mensaje final
-    mensaje_final = generar_mensaje_cotizacion(
-        articulo_input,
-        precio_usd_input,
-        tasa_bcv_input,
-        tasa_paralelo_input,
-        abono_usd_input,
-        abono_bs_input
-    )
+    c1, c2 = st.columns(2)
+    with c1:
+        precio_usd = st.number_input("Precio ($ BCV)", min_value=0.0, value=15.0, step=0.5)
+        tasa_bcv = st.number_input("Tasa BCV", value=tasa_auto, step=0.01)
+    with c2:
+        tasa_paralelo = st.number_input("Tasa Paralelo", value=60.0, step=0.5)
     
-    # Mostrar el mensaje formateado en un área de texto para que el usuario pueda verlo y copiarlo
-    st.text_area("Copia este texto y pégalo en WhatsApp/Marketplace:", mensaje_final, height=500)
-    
-    # Botón de copiar al portapapeles (Streamlit native o JS hack)
-    # Por simplicidad, usaremos el text_area, el usuario solo tiene que Ctrl+A y Ctrl+C.
-    st.success("🎉 ¡Cotización generada exitosamente! Solo cópiala del cuadro de arriba.")
-    st.info("💡 Consejo: Asegúrate de que el cliente entienda que el saldo pendiente en $ está calculado a tasa Paralelo, mientras que el precio original está a tasa BCV.")
+    st.markdown("---")
+    st.subheader("💰 Abonos recibidos")
+    a1, a2 = st.columns(2)
+    with a1:
+        abono_usd = st.number_input("Efectivo ($)", min_value=0.0, value=0.0, step=1.0)
+    with a2:
+        abono_bs = st.number_input("Pago Móvil (Bs)", min_value=0.0, value=0.0, step=10.0)
 
-st.markdown("---")
-st.caption("Prototipo Visual para Color Insumos - Desarrollado en Python/Streamlit.")
+with col2:
+    st.subheader("📝 Mensaje para el Cliente")
+    
+    resultado = generar_mensaje(articulo, precio_usd, tasa_bcv, tasa_paralelo, abono_usd, abono_bs)
+    
+    # Mostramos el resultado en un text_area para copiar fácil
+    st.text_area("Copia el texto aquí abajo:", value=resultado, height=450)
+    
+    st.info("💡 Usa el punto (.) para decimales. Los cálculos se actualizan automáticamente al cambiar cualquier valor.")
+
+st.caption("Desarrollado para Color Insumos - San Francisco, Zulia.")
